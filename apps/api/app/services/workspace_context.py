@@ -7,6 +7,7 @@ blocks; files, memories and project knowledge are untrusted data.
 from __future__ import annotations
 
 import logging
+import math
 import re
 from dataclasses import dataclass
 
@@ -313,19 +314,41 @@ async def _project_blocks(
     return instructions, knowledge, used
 
 
+def _focus_terms(focus: str, text: str) -> list[str]:
+    """Words of `focus` as they occur in `text`: Korean particles attach to a word, so
+    「제80조는」 counts by its longest prefix the document contains, 「제80조」."""
+    lowered = text.lower()
+    terms: list[str] = []
+    for raw in re.split(r"[\s,·?!.]+", focus.lower())[:8]:
+        word = next(
+            (raw[:n] for n in range(len(raw), 1, -1) if raw[:n] in lowered),
+            "",
+        )
+        if word and word not in terms:
+            terms.append(word)
+    return terms
+
+
 def _excerpt(text: str, budget: int, focus: str) -> str:
     """The `budget` characters of `text` most relevant to `focus` (lexical; head when no focus)."""
-    terms = [t for t in re.split(r"[\s,·]+", focus) if len(t) >= 2][:8]
+    terms = _focus_terms(focus, text) if focus.strip() else []
     if not terms:
         return text[:budget]
 
-    # Score fixed windows and keep the highest-scoring run.
+    # Score fixed windows and keep the highest-scoring run. A word found in most
+    # windows (「조항」 in a rulebook) says little about which one was asked for, so
+    # each word weighs by its rarity and its length: 「제290조」 once outweighs
+    # 「조항」 everywhere.
     window = 1_000
-    windows = [text[i : i + window] for i in range(0, len(text), window)]
-    scores = [sum(w.lower().count(term.lower()) for term in terms) for w in windows]
+    windows = [w.lower() for w in (text[i : i + window] for i in range(0, len(text), window))]
     span = max(1, budget // window)
     if len(windows) <= span:
         return text[:budget]
+    weights = {
+        term: len(term) * math.log((len(windows) + 1) / (1 + sum(term in w for w in windows)))
+        for term in terms
+    }
+    scores = [sum(weights[term] * w.count(term) for term in terms) for w in windows]
 
     best_at, best = 0, -1
     for start in range(0, len(windows) - span + 1):
@@ -334,6 +357,12 @@ def _excerpt(text: str, budget: int, focus: str) -> str:
             best_at, best = start, total
     if best <= 0:
         return text[:budget]
+    # The earliest best run ends on the hit; slide later while nothing is lost so
+    # the hit sits inside the run with what follows it, not at its edge.
+    for _ in range(span // 2):
+        if best_at + span >= len(windows) or sum(scores[best_at + 1 : best_at + 1 + span]) < best:
+            break
+        best_at += 1
 
     picked = "".join(windows[best_at : best_at + span])
     lead = "" if best_at == 0 else f"…(앞 {best_at * window:,}자 생략)\n\n"
@@ -809,9 +838,7 @@ async def assemble(
     # long document carried for many turns costs at most the budget, never more.
     carried_files: tuple[ContextFile, ...] = ()
     if session.kind is SessionKind.chat:
-        earlier = await _earlier_attachments(
-            db, user, session, exclude=set(attachment_ids or [])
-        )
+        earlier = await _earlier_attachments(db, user, session, exclude=set(attachment_ids or []))
         if earlier:
             remaining = (file_budget or settings.file_context_chars) - sum(
                 file.kept_chars for file in attached_files

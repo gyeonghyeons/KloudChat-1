@@ -2530,6 +2530,7 @@ async def send_message(
                 file_budget=file_budget(model),
                 activated_skill_ids=payload.activated_skill_ids,
                 starting_template_id=payload.starting_template_id,
+                question=content,
                 available_tool_names={tool.name for tool in tools},
             )
         except WorkspaceContextError as exc:
@@ -3598,6 +3599,7 @@ async def compare_models(
             file_budget=min(file_budget(m) for m in chosen),
             activated_skill_ids=payload.activated_skill_ids,
             starting_template_id=payload.starting_template_id,
+            question=content,
             # Comparison exposes no tools.
             available_tool_names=set(),
         )

@@ -255,6 +255,17 @@ def test_the_answer_moves_the_excerpt_to_the_part_that_was_asked_for():
     assert "앞" in aimed and "생략" in aimed
 
 
+def test_a_word_on_every_page_does_not_outvote_the_one_that_was_asked_for():
+    """「제290조는 무슨 조항이야」: 조항 is everywhere, 제290조 once, and once wins."""
+    article = "제{n}조(일반 사항) 이 조항은 원칙을 정한다. " + "세부 절차는 지침에 따른다. " * 6
+    text = "합성 문서\n" + "\n".join(article.format(n=n) for n in range(1, 61))
+
+    aimed = _excerpt(text, 2_000, focus="제50조는 무슨 조항이야? 문서에 있는 그대로.")
+
+    assert "제50조(" in aimed
+    assert "제1조(" not in aimed
+
+
 def test_a_focus_nothing_matches_falls_back_to_the_beginning():
     text = "가나다라마바사" * 500
 

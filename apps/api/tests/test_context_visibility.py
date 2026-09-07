@@ -130,8 +130,9 @@ async def test_an_earlier_file_too_long_to_carry_whole_is_excerpted_around_the_q
     monkeypatch.setattr(settings, "file_context_chars", 1_000)
     earlier = _file("학칙.pdf", "가" * 3_000 + "제80조 휴학은 두 해까지 한다." + "나" * 3_000)
     earlier.session_id = "session-1"
+    # 「제80조는」: the particle is the question's, not the document's.
     context = await assemble(
-        _Db(files=[earlier]), _user(), _session(), question="휴학 기간이 최대 몇 년이야?"
+        _Db(files=[earlier]), _user(), _session(), question="제80조는 무슨 조항이야?"
     )
 
     block = next(block.text for block in context.blocks if block.source == "attachment.earlier")
@@ -400,9 +401,7 @@ def _patch_enrichment(monkeypatch, db: _EnrichDb, *, written: int) -> None:
     monkeypatch.setattr(sessions_router.artifact_extract, "store_requested", store_requested)
     monkeypatch.setattr(sessions_router.artifact_extract, "extract", extract)
     monkeypatch.setattr(sessions_router.auto_memory_service, "extract", remember)
-    monkeypatch.setattr(
-        sessions_router.model_service, "resolve_enrichment_model", enrichment_model
-    )
+    monkeypatch.setattr(sessions_router.model_service, "resolve_enrichment_model", enrichment_model)
 
 
 def _user() -> User:
